@@ -1,0 +1,54 @@
+dependencies:
+  pre:
+    # uninstall the previously-installed sdk
+    - sudo rm -rf $ANDROID_HOME
+    # install the right sdk
+    - |
+      case $CIRCLE_NODE_INDEX in
+      # first two options are android sdk 23 on x86 and on arm.
+      [0-1]*)
+        wget http://dl.google.com/android/android-sdk_r23-linux.tgz
+        sudo tar -zxf android-sdk_r23-linux.tgz -C /usr/local
+        rm android-sdk_r23-linux.tgz
+        ;;
+      2)
+        wget http://dl.google.com/android/android-sdk_r24-linux.tgz
+        sudo tar -zxf android-sdk_r24-linux.tgz -C /usr/local
+        rm android-sdk_r24-linux.tgz
+        ;;
+      esac
+    # fix permissions
+    - sudo chown -R "ubuntu:ubuntu" "/usr/local/android-sdk-linux"
+    # install the sdk dependencies
+    - echo y | android update sdk --no-ui --all --filter "platform-tools,build-tools-21.1.2,android-21,sys-img-armeabi-v7a-android-21,sys-img-x86-android-21,extra-android-support,extra-android-m2repository"
+    # create an avd.
+    - |
+      case $CIRCLE_NODE_INDEX in
+      # case 0 is android 23 x86
+      0)
+        echo "no" | android create avd -n test-avd -t android-21 --abi "default/x86"
+        ;;
+      # cases 1 and 2 are arm
+      [1-2]*)
+        echo "no" | android create avd -n test-avd -t android-21 --abi "default/armeabi-v7a"
+        ;;
+      esac
+
+test:
+  override:
+    # start the emulator
+    - emulator -avd test-avd -no-audio:
+        background: true
+        parallel: true
+    - if [ $CIRCLE_NODE_INDEX = 2 ]; then circle-android wait-for-boot; fi:
+        parallel: true
+    - adb wait-for-device && sleep 240:
+        parallel: true
+    - adb shell getprop init.svc.bootanim:
+        parallel: true
+    - ./gradlew connectedAndroidTest:
+        parallel: true
+    - cp -r app/build/outputs $CIRCLE_ARTIFACTS:
+        parallel: true
+    - cp -r app/build/outputs/androidTest-results/* $CIRCLE_TEST_REPORTS:
+        parallel: true
